@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset='utf-8'>
+		<style type='text/css' media='screen, print'>
+			body  { margin: 30px 50px; font-family: sans-serif; }
+			line, polyline, path { stroke: black; fill: none; }
+		</style>
+		<title>FIDE chess players</title>
+	</head>
+	<body>
+		<h1>FIDE chess players</h1>
+		<h4>Top 20 </h4>
+
+		<script src='../vendor/d3-7.8.5/dist/d3.js'></script>
+		<script>
+
+async function tsvgz(input, row) { // loading gzipped tsv files
+	let blob = await d3.blob(`${input}.gz`);
+	const stream = blob.stream().pipeThrough(new DecompressionStream('gzip'));
+	return d3.tsvParse(await new Response(stream).text(), row);
+}
+	
+
+var body = d3.select('body');
+
+const gender = d3.scaleOrdinal()
+	.domain(['M', 'F'])
+	.range(['♂', '♀']);
+
+Promise.all([
+	tsvgz('../data/ratings.tsv', d => ({
+		id:     +d['#id'],
+		month:   d.month,
+		rating: +d.rating,
+		games:  +d.games,
+	})),
+
+	d3.tsv('../data/players.tsv', d => ({
+		id:         +d['#id'],
+		name:        d.name,
+		fed:         d.fed,
+		sex:         d.sex,
+		birthyear:  +d.birthyear,
+		max_rating: +d.max_rating,
+		month:       d.month,
+	})),
+
+	d3.tsv('../data/titles.tsv', d => ({
+		id:     +d['#id'],
+		month:   d.month,
+		title:   d.title,
+	})),
+	
+	d3.tsv('../data/countries.tsv', d => ({
+		country:   d['#country'],
+		iso3:      d.alpha3,
+		fed:       d.ioc,
+	})),
+	
+]).then(function(datasets) {
+	
+	// data
+	let ratings = datasets[0];                         // ratings series
+	let players = d3.index(datasets[1], p => p.id);    // players index
+	let titles = d3.group(datasets[2], t => t.id);     // titles per player
+	let countries = d3.index(datasets[3], c => c.fed); // countries index
+
+	
+	// dropdown categories
+	let h4 = body.select('h4');
+	let dropdown_category = h4.append('select');
+	let categories = new Map([
+		['players', (p, y) => true],
+		['women',   (p, y) => p.sex == 'F'],
+		['juniors', (p, y) => y <= p.birthyear],
+		['girls',   (p, y) => y <= p.birthyear && p.sex == 'F'],
+	]);
+	var options = dropdown_category.selectAll('option')
+		.data(categories.keys())
+		.join('option')
+			.text(d => d)
+			.attr('value', d => d);
+	
+	h4.append('text')
+		.text(' for month ');
+
+	// dropdown months
+	let dropdown_month = h4.append('select');
+	let months = [...new Set(ratings.map(d => d.month))].sort(d3.descending); // collect the months from data set
+	var options = dropdown_month.selectAll('option')
+		.data(months)
+		.join('option')
+			.text(d => d)
+			.attr('value', d => d);
+
+	// build player list for given criterions
+	var player_list = body.append('ol');	
+	function update(month, category) {
+		var [y, m] = month.split('-');
+		let junior_year = y - 20;
+		var category_filter = categories.get(category);
+		
+		var active_players = d3.rollup(
+			ratings
+				.filter(d => `${y-1}-${m}` < d.month && d.month <= month)      // consider active players
+				.filter(d => category_filter(players.get(d.id), junior_year)), // from the category and,
+			R => R[R.length-1],   // keep last rating
+			r => r.id             // for each player id
+		);
+				
+		var selection = player_list.selectAll('li')
+			.data(Array.from(active_players.values())
+				.sort((a, b) => d3.descending(a.rating, b.rating)) // sort according to rating
+				.slice(0, 20)                                      // keep top-20
+			)
+			.join(
+				enter => enter.append('li')
+					.call(li => {
+						li.append('a')
+							.attr('href', d => `./1-player.html?player_id=${d.id}`)
+							.text(d => players.get(d.id).name);
+						li.append('span')
+							.text(d => ` (${titles.get(d.id).filter(t => t.month <= month).map(t => t.title).join(', ')}) ${gender(players.get(d.id).sex)} – ${d.rating} – ${countries.get(players.get(d.id).fed)?.country}`);
+						return li;
+					}),
+				update => update
+					.call(li => {
+						li.select('a')
+							.attr('href', d => `./1-player.html?player_id=${d.id}`)
+							.text(d => players.get(d.id).name);
+						li.select('span')
+							.text(d => ` (${titles.get(d.id).filter(t => t.month <= month).map(t => t.title).join(', ')}) ${gender(players.get(d.id).sex)} – ${d.rating} – ${countries.get(players.get(d.id).fed)?.country}`);
+						return li;
+					})
+			)
+	}
+	
+	[dropdown_month, dropdown_category].forEach(d => {
+		d.on('change', e => {
+			update(dropdown_month.property('value'), dropdown_category.property('value'));
+		});
+	});
+	dropdown_month.dispatch('change'); // force initial update
+
+});
+
+		</script>
+	</body>
+</html>

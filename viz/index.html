@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Visualization</title>
+    <link rel="stylesheet" href="../css/index.css">
+    <script src="../vendor/d3-7.8.5/dist/d3.js"></script>
+</head>
+<body>
+    <nav class="tabs">
+        <button class="tab-button active" data-slide="1">
+            <span class="tab-number">01</span>
+            <span class="tab-title">Rating Evolution Over Time</span>
+        </button>
+        <button class="tab-button" data-slide="2">
+            <span class="tab-number">02</span>
+            <span class="tab-title">Men vs Women Ratings</span>
+        </button>
+        <button class="tab-button" data-slide="3">
+            <span class="tab-number">03</span>
+            <span class="tab-title">Regional Ratings</span>
+        </button>
+    </nav>
+
+    <main>
+        <!-- Slide 1: Rating Evolution Over Time -->
+        <div class="slide active" id="slide-1">
+            <div class="slide-header">
+                <h2>How has the global average rating evolved over time, and is this evolution related to changes in player activity?</h2>
+            </div>
+
+            <div class="chart-container">
+                <svg id="rating-chart"></svg>
+                <div class="legend" id="legend"></div>
+            </div>
+
+            <div class="chart-container">
+                <svg id="delta-chart"></svg>
+            </div>
+        </div>
+
+        <!-- Slide 2: Men vs Women -->
+        <div class="slide" id="slide-2">
+            <div class="slide-header">
+                <h2>How do genders rank in terms of average rating, and how reliable is the comparison given differences in participation?</h2>
+            </div>
+
+            <div class="chart-container">
+                <svg id="gender-chart"></svg>
+            </div>
+        </div>
+
+        <!-- Slide 3: Regional Ratings -->
+        <div class="slide" id="slide-3">
+            <div class="slide-header">
+                <h2>Which world region has the highest average rating?</h2>
+            </div>
+
+            <div class="chart-container">
+                <svg id="region-chart"></svg>
+            </div>
+        </div>
+    </main>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script src="index.js"></script>
+</body>
+</html>

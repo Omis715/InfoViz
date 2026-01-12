@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Test</title>
+</head>
+<body>
+    <h1>If you can see this, the server is working</h1>
+    <p>Server timestamp: <?php echo date('Y-m-d H:i:s'); ?></p>
+    <script>
+        console.log('SIMPLE TEST: JavaScript is working');
+        alert('If you see this alert, JavaScript is enabled and working');
+        document.body.innerHTML += '<p style="color: green; font-weight: bold;">JavaScript executed successfully at ' + new Date().toISOString() + '</p>';
+    </script>
+</body>
+</html>

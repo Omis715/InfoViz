@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset='utf-8'>
+		<style type='text/css' media='screen, print'>
+			body  { margin: 30px 50px; font-family: sans-serif; }
+			line, polyline, path { stroke: black; fill: none; }
+		</style>
+		<title>Player rating</title>
+	</head>
+	<body>
+		<h1>Player rating</h1>
+
+		<script src='../vendor/d3-7.8.5/dist/d3.js'></script>
+		<script>
+
+// helpers //////////////////////////////////////////////////////////////////
+
+var params = new URLSearchParams(document.location.search);
+let player_id = +params.get('player_id') || 1503014; // Magnus Carlsen
+
+var month_format = d3.timeFormat('%Y-%m');
+
+var body = d3.select('body');
+var margin = {top: 50, right: 50, bottom: 80, left: 80},
+	width = 600 - margin.left - margin.right,
+	height = 400 - margin.top - margin.bottom;
+
+var plot = body.append('svg')
+	.attr('width', width + margin.left + margin.right)
+	.attr('height', height + margin.top + margin.bottom)
+	.append('g')
+		.attr('transform', `translate(${margin.left},${margin.top})`);
+
+var x = d3.scaleTime()
+	.range([0, width]);
+
+var y = d3.scaleLinear()
+	.range([height, 0]);
+
+
+// data /////////////////////////////////////////////////////////////////////
+
+Promise.all([
+	d3.tsv('../data/ratings.tsv', d => ({
+		id:     +d['#id'],
+		month:   d.month,
+		rating: +d.rating,
+		games:  +d.games,
+	})),
+
+	d3.tsv('../data/players.tsv', d => ({
+		id:         +d['#id'],
+		name:        d.name,
+		fed:         d.fed,
+		year:       +d.birthyear,
+		max_rating: +d.max_rating,
+		month:       d.month,
+	})),
+		
+]).then(function(datasets) {
+	
+	// data
+	let ratings = datasets[0];                         // ratings series
+	let players = d3.index(datasets[1], p => p.id);    // players index
+
+	let months = [...new Set(ratings.map(d => d.month))] // collect the months from data set
+		.sort(d3.descending)
+		.map(m => new Date(m));
+	x.domain([new Date('2015-01'), new Date('2026-01')]);
+	y.domain([1000, 3000]);
+
+	let [x0, x1] = x.range();
+	let [y0, y1] = y.range();
+
+
+	// ratings
+	var player = players.get(player_id);
+	var player_ratings = ratings
+		.filter(r => r.id == player_id)
+		.sort((a, b) => d3.ascending(a.month, b.month)); // do not rely on years being sorted in input
+	
+	body.select('h1')
+		.text(`Ratings of ${player.name}`);
+	
+	plot.append('path')
+		.datum(player_ratings)
+		.attr('class', 'elo')
+		.attr('shape-rendering', 'crispEdges')
+		.attr('d', d3.line().curve(d3.curveStepAfter)
+			.x(d => x(new Date(d.month)))
+			.y(d => y(d.rating)));
+
+
+	// axis
+	plot.append('g')
+		.attr('transform', `translate(${x0},${y0})`)
+		.call(d3.axisBottom(x)
+			.tickFormat(month_format)
+		)
+		.call(g => {
+			g.selectAll('text')
+				.attr('transform', 'rotate(-15)')
+				.attr('text-anchor', 'end');
+			return g;
+		});
+	plot.append('text')
+		.attr('transform', `translate(${x1},${y0+40})`)
+		.attr('text-anchor', 'end')
+		.text("month");
+
+	plot.append('g')
+		.attr('transform', `translate(${x0},${y1})`)
+		.call(d3.axisLeft(y))
+		.call(g => {
+			g.selectAll('text')
+				.attr('transform', 'rotate(-15)');
+			return g;
+		});
+	plot.append('text')
+		.attr('transform', `translate(${x0-45},${y1}) rotate(-90)`)
+		.attr('text-anchor', 'end')
+		.text("ELO rating");
+
+
+	// cursors
+	var x_cursor = plot.append('g');
+	x_cursor.append('line')
+		.attr('stroke', 'black')
+		.attr('stroke-dasharray', '5,5')
+		.attr('y1', y0)
+		.attr('y2', y0);
+	x_cursor.append('rect')
+		.attr('fill', 'white').attr('fill-opacity', .75)
+		.attr('x', -65).attr('width', 70)
+		.attr('y', y0+5).attr('height', 20);
+	x_cursor.append('text')
+		.attr('y', y0+24)
+		.attr('text-anchor', 'end')
+		.text('…');
+
+	var y_cursor = plot.append('g')
+		.attr('transform', `translate(0,${y0})`);
+	y_cursor.append('line')
+		.attr('stroke', 'black')
+		.attr('stroke-dasharray', '5,5')
+		.attr('x1', x0)
+		.attr('x2', x0);
+	y_cursor.append('rect')
+		.attr('fill', 'white').attr('fill-opacity', '.75')
+		.attr('x', x0-55).attr('width', 50)
+		.attr('y', -12).attr('height', 20);
+	y_cursor.append('text')
+		.attr('x', -8).attr('y', 4)
+		.attr('text-anchor', 'end')
+		.text('…');
+	
+	function set_cursors(d) {
+		if(!d) return;
+		let x_month = x(new Date(d.month));
+		x_cursor
+			.attr('transform', `translate(${x_month})`)
+			.select('line')
+				.attr('y2', y(d.rating));
+		x_cursor.select('text').text(d.month);
+		
+		y_cursor
+			.attr('transform', `translate(0,${y(d.rating)})`)
+			.select('line')
+				.attr('x2', x_month);
+		y_cursor.select('text').text(d.rating);
+	}
+	plot.append('rect')
+		.attr('width', width)
+		.attr('height', height)
+		.attr('opacity', 0.)
+		.on('mousemove', e => {
+			let [xm, ym] = d3.pointer(event);
+			let date = month_format(x.invert(xm));
+			let rating = player_ratings[d3.bisectRight(player_ratings.map(r => r.month), date)-1];
+			set_cursors(rating);
+		});
+});
+
+		</script>
+	</body>
+</html>

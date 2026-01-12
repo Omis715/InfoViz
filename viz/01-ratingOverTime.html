@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Average Rating Evolution Over Time</title>
+    <link rel="stylesheet" href="../css/01-ratingOverTime.css">
+    <script src="../vendor/d3-7.8.5/dist/d3.js"></script>
+</head>
+<body>
+    <h1>How has the global average rating evolved over time, and is this evolution related to changes in player activity?</h1>
+
+    <div class="chart-container">
+        <svg id="rating-chart"></svg>
+        <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="chart-container">
+        <svg id="delta-chart"></svg>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // Function to load gzipped TSV files
+        async function tsvgz(input, row) {
+            let blob = await d3.blob(`${input}.gz`);
+            const stream = blob.stream().pipeThrough(new DecompressionStream('gzip'));
+            return d3.tsvParse(await new Response(stream).text(), row);
+        }
+
+        // Chart dimensions
+        const margin = {top: 20, right: 80, bottom: 50, left: 60};
+        const width = 1000 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+
+        // Load data
+        console.log('Starting to load data...');
+        Promise.all([
+            tsvgz('../data/ratings.tsv', d => ({
+                id: +d['#id'],
+                month: d.month,
+                rating: +d.rating,
+                games: +d.games
+            })),
+            d3.tsv('../data/players.tsv', d => ({
+                id: +d['#id'],
+                sex: d.sex
+            }))
+        ]).then(function([ratings, playersData]) {
+            console.log('Data loaded successfully!');
+            console.log('Ratings count:', ratings.length);
+            console.log('Players count:', playersData.length);
+
+            // Create player lookup
+            const players = d3.index(playersData, p => p.id);
+
+            // Track zoom state
+            let zoomedDomain = null;
+
+            // Main visualization function
+            function updateVisualization() {
+                console.log('updateVisualization called');
+
+                // Group by year and calculate averages
+                const yearlyData = d3.rollup(
+                    ratings,
+                    v => {
+                        const avgRating = d3.mean(v, d => d.rating);
+                        const avgGames = d3.mean(v, d => d.games);
+                        const totalGames = d3.sum(v, d => d.games);
+                        const playerCount = v.length;
+
+                        // Count by activity level
+                        const low = v.filter(d => d.games >= 1 && d.games <= 5).length;
+                        const medium = v.filter(d => d.games >= 6 && d.games <= 15).length;
+                        const high = v.filter(d => d.games >= 16).length;
+
+                        return { avgRating, avgGames, totalGames, playerCount, low, medium, high };
+                    },
+                    d => d.month.split('-')[0] // Extract year from 'YYYY-MM'
+                );
+
+                // Convert to array and sort by year
+                let data = Array.from(yearlyData, ([year, values]) => ({
+                    year: +year,
+                    yearStr: year,
+                    ...values
+                })).sort((a, b) => a.year - b.year);
+
+                console.log('Yearly data points:', data.length);
+                console.log('Sample data:', data.slice(0, 3));
+
+                // Calculate delta (year-to-year change)
+                data.forEach((d, i) => {
+                    if (i > 0) {
+                        d.deltaRating = d.avgRating - data[i - 1].avgRating;
+                    } else {
+                        d.deltaRating = 0;
+                    }
+                });
+
+                // Draw rating chart
+                drawRatingChart(data);
+
+                // Draw delta chart
+                drawDeltaChart(data);
+
+                
+            }
+
+            function drawRatingChart(data) {
+                // Clear previous
+                d3.select('#rating-chart').selectAll('*').remove();
+
+                const svg = d3.select('#rating-chart')
+                    .attr('width', width + margin.left + margin.right)
+                    .attr('height', height + margin.top + margin.bottom)
+                    .append('g')
+                    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+                // Scales with padding
+                const xExtent = zoomedDomain || d3.extent(data, d => d.year);
+                const xPadding = (xExtent[1] - xExtent[0]) * 0.05; // 5% padding
+                const x = d3.scaleLinear()
+                    .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
+                    .range([0, width]);
+
+                // Filter data to zoomed range for y-axis calculation
+                const visibleData = zoomedDomain
+                    ? data.filter(d => d.year >= zoomedDomain[0] && d.year <= zoomedDomain[1])
+                    : data;
+
+                const yExtent = d3.extent(visibleData, d => d.avgRating);
+                const yPadding = (yExtent[1] - yExtent[0]) * 0.1; // 10% padding
+                const y = d3.scaleLinear()
+                    .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+                    .range([height, 0]);
+
+                // Size scale based on rating value
+                const sizeScale = d3.scaleSqrt()
+                    .domain(d3.extent(data, d => d.avgRating))
+                    .range([5, 25]);
+
+                // Color scale based on average games with logarithmic transformation
+                // This makes differences more visible across a wide range of values
+                const gamesExtent = d3.extent(data, d => d.avgGames);
+                const colorScale = d3.scaleSequential()
+                    .domain([Math.log(gamesExtent[0] + 1), Math.log(gamesExtent[1] + 1)])
+                    .interpolator(d3.interpolateTurbo);
+
+                // Wrapper function to apply log transformation
+                const getColor = (avgGames) => colorScale(Math.log(avgGames + 1));
+
+                // Grid
+                svg.append('g')
+                    .attr('class', 'grid')
+                    .attr('transform', `translate(0,${height})`)
+                    .call(d3.axisBottom(x).tickFormat(d3.format('d')).tickSize(-height).tickFormat(''));
+
+                svg.append('g')
+                    .attr('class', 'grid')
+                    .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
+
+                // Axes
+                svg.append('g')
+                    .attr('transform', `translate(0,${height})`)
+                    .call(d3.axisBottom(x).tickFormat(d3.format('d')));
+
+                svg.append('g')
+                    .call(d3.axisLeft(y));
+
+                // Labels
+                svg.append('text')
+                    .attr('transform', 'rotate(-90)')
+                    .attr('y', -margin.left + 15)
+                    .attr('x', -height / 2)
+                    .attr('dy', '1em')
+                    .style('text-anchor', 'middle')
+                    .style('font-size', '12px')
+                    .text('Average Rating');
+
+                svg.append('text')
+                    .attr('x', width / 2)
+                    .attr('y', height + margin.bottom - 5)
+                    .style('text-anchor', 'middle')
+                    .style('font-size', '12px')
+                    .text('Year');
+
+                // Add brush for zooming
+                const brush = d3.brushX()
+                    .extent([[0, 0], [width, height]])
+                    .on('end', brushed);
+
+                const brushGroup = svg.append('g')
+                    .attr('class', 'brush')
+                    .call(brush);
+
+                function brushed(event) {
+                    if (!event.selection) return;
+
+                    const [x0, x1] = event.selection.map(x.invert);
+                    zoomedDomain = [Math.round(x0), Math.round(x1)];
+
+                    // Clear the brush
+                    brushGroup.call(brush.move, null);
+
+                    // Redraw with new domain
+                    updateVisualization();
+                }
+
+                // Add reset button if zoomed
+                if (zoomedDomain) {
+                    svg.append('text')
+                        .attr('x', width - 10)
+                        .attr('y', -5)
+                        .attr('text-anchor', 'end')
+                        .style('cursor', 'pointer')
+                        .style('font-size', '12px')
+                        .style('fill', '#0066cc')
+                        .style('text-decoration', 'underline')
+                        .text('Reset Zoom')
+                        .on('click', function() {
+                            zoomedDomain = null;
+                            updateVisualization();
+                        });
+                }
+
+                // Draw circles AFTER brush so they're on top
+                const tooltip = d3.select('#tooltip');
+
+                svg.selectAll('.data-circle')
+                    .data(data)
+                    .enter()
+                    .append('circle')
+                    .attr('class', 'data-circle')
+                    .attr('cx', d => x(d.year))
+                    .attr('cy', d => y(d.avgRating))
+                    .attr('r', d => sizeScale(d.avgRating))
+                    .attr('fill', d => getColor(d.avgGames))
+                    .attr('opacity', 0.8)
+                    .attr('stroke', '#333')
+                    .attr('stroke-width', 1.5)
+                    .style('cursor', 'pointer')
+                    .style('pointer-events', 'all')
+                    .on('mouseover', function(event, d) {
+                        d3.select(this)
+                            .transition()
+                            .duration(200)
+                            .attr('opacity', 1)
+                            .attr('stroke-width', 3);
+
+                        tooltip
+                            .html(`
+                                <strong>${d.yearStr}</strong><br/>
+                                Avg Rating: <strong>${d.avgRating.toFixed(1)}</strong><br/>
+                                Total Games: <strong>${d.totalGames.toLocaleString()}</strong><br/>
+                                Players: <strong>${d.playerCount.toLocaleString()}</strong><br/>
+                                <div style="margin-top: 5px; padding-top: 5px; border-top: 1px solid #666;">
+                                    Low Activity: ${d.low.toLocaleString()}<br/>
+                                    Medium Activity: ${d.medium.toLocaleString()}<br/>
+                                    High Activity: ${d.high.toLocaleString()}
+                                </div>
+                            `)
+                            .style('left', (event.pageX + 15) + 'px')
+                            .style('top', (event.pageY - 15) + 'px')
+                            .style('opacity', 1);
+                    })
+                    .on('mouseout', function() {
+                        d3.select(this)
+                            .transition()
+                            .duration(200)
+                            .attr('opacity', 0.8)
+                            .attr('stroke-width', 1.5);
+
+                        tooltip.style('opacity', 0);
+                    });
+
+                // Update legend
+                updateLegend(data);
+            }
+
+            function drawDeltaChart(data) {
+                // Clear previous
+                d3.select('#delta-chart').selectAll('*').remove();
+
+                const svg = d3.select('#delta-chart')
+                    .attr('width', width + margin.left + margin.right)
+                    .attr('height', 250)
+                    .append('g')
+                    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+                const chartHeight = 250 - margin.top - margin.bottom;
+
+                // Scales
+                const x = d3.scaleLinear()
+                    .domain(d3.extent(data, d => d.year))
+                    .range([0, width]);
+
+                const yExtent = d3.max(data, d => Math.abs(d.deltaRating));
+                const y = d3.scaleLinear()
+                    .domain([-yExtent * 1.2, yExtent * 1.2])
+                    .range([chartHeight, 0]);
+
+                // Zero line
+                svg.append('line')
+                    .attr('x1', 0)
+                    .attr('x2', width)
+                    .attr('y1', y(0))
+                    .attr('y2', y(0))
+                    .attr('stroke', '#999')
+                    .attr('stroke-width', 1);
+
+                // Calculate bar width based on number of years
+                const barWidth = width / (data.length * 2);
+
+                // Bars
+                svg.selectAll('.delta-bar')
+                    .data(data.slice(1)) // Skip first (no delta)
+                    .enter()
+                    .append('rect')
+                    .attr('class', 'delta-bar')
+                    .attr('x', d => x(d.year) - barWidth / 2)
+                    .attr('y', d => d.deltaRating > 0 ? y(d.deltaRating) : y(0))
+                    .attr('width', barWidth)
+                    .attr('height', d => Math.abs(y(d.deltaRating) - y(0)))
+                    .attr('fill', d => d.deltaRating > 0 ? '#10b981' : '#ef4444')
+                    .attr('opacity', 0.7);
+
+                // Axes
+                svg.append('g')
+                    .attr('transform', `translate(0,${chartHeight})`)
+                    .call(d3.axisBottom(x).tickFormat(d3.format('d')));
+
+                svg.append('g')
+                    .call(d3.axisLeft(y));
+
+                // Labels
+                svg.append('text')
+                    .attr('transform', 'rotate(-90)')
+                    .attr('y', -margin.left + 15)
+                    .attr('x', -chartHeight / 2)
+                    .attr('dy', '1em')
+                    .style('text-anchor', 'middle')
+                    .style('font-size', '12px')
+                    .text('Rating Change (Year-to-Year)');
+
+                svg.append('text')
+                    .attr('x', width / 2)
+                    .attr('y', -5)
+                    .style('text-anchor', 'middle')
+                    .style('font-size', '14px')
+                    .style('font-weight', 'bold')
+                    .text('Yearly Rating Delta');
+            }
+
+            function updateLegend(data) {
+                const legend = d3.select('#legend');
+                legend.selectAll('*').remove();
+
+                // Create color gradient legend
+                const legendContainer = legend.append('div')
+                    .style('display', 'flex')
+                    .style('align-items', 'center')
+                    .style('gap', '15px');
+
+                legendContainer.append('span')
+                    .style('font-weight', 'bold')
+                    .text('Average Games per Year:');
+
+                // Create gradient bar
+                const gradientWidth = 200;
+                const gradientHeight = 20;
+
+                const minGames = d3.min(data, d => d.avgGames);
+                const maxGames = d3.max(data, d => d.avgGames);
+
+                const svgLegend = legendContainer.append('svg')
+                    .attr('width', gradientWidth + 50)
+                    .attr('height', gradientHeight + 30);
+
+                // Define gradient
+                const defs = svgLegend.append('defs');
+                const gradient = defs.append('linearGradient')
+                    .attr('id', 'games-gradient')
+                    .attr('x1', '0%')
+                    .attr('x2', '100%');
+
+                // Create gradient stops with logarithmic scale
+                const numStops = 10;
+                const logMin = Math.log(minGames + 1);
+                const logMax = Math.log(maxGames + 1);
+
+                for (let i = 0; i <= numStops; i++) {
+                    const offset = (i / numStops) * 100;
+                    const logValue = logMin + (logMax - logMin) * (i / numStops);
+
+                    const legendColorScale = d3.scaleSequential()
+                        .domain([logMin, logMax])
+                        .interpolator(d3.interpolateTurbo);
+
+                    gradient.append('stop')
+                        .attr('offset', `${offset}%`)
+                        .attr('stop-color', legendColorScale(logValue));
+                }
+
+                // Draw gradient rectangle
+                svgLegend.append('rect')
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .attr('width', gradientWidth)
+                    .attr('height', gradientHeight)
+                    .style('fill', 'url(#games-gradient)')
+                    .style('stroke', '#999')
+                    .style('stroke-width', 1);
+
+                // Add min label
+                svgLegend.append('text')
+                    .attr('x', 0)
+                    .attr('y', gradientHeight + 15)
+                    .style('font-size', '11px')
+                    .style('text-anchor', 'start')
+                    .text(minGames.toFixed(1));
+
+                // Add max label
+                svgLegend.append('text')
+                    .attr('x', gradientWidth)
+                    .attr('y', gradientHeight + 15)
+                    .style('font-size', '11px')
+                    .style('text-anchor', 'end')
+                    .text(maxGames.toFixed(1));
+
+                // Add note about circle size
+                legendContainer.append('span')
+                    .style('margin-left', '20px')
+                    .style('color', '#666')
+                    .style('font-style', 'italic')
+                    .text('Circle size = Rating value');
+            }
+            // Initial render
+            console.log('Calling updateVisualization...');
+            updateVisualization();
+        }).catch(function(error) {
+            console.error('Error loading data:', error);
+            document.body.innerHTML += '<div style="color: red; padding: 20px; background: #ffe0e0; margin: 20px; border-radius: 5px;"><h2>Error Loading Data</h2><p>' + error.message + '</p><p>Check the browser console for details.</p></div>';
+        });
+    </script>
+</body>
+</html>

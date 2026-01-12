@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Men vs Women - Average Chess Ratings</title>
+    <link rel="stylesheet" href="../css/02-MenVsWomen.css">
+    <script src="../vendor/d3-7.8.5/dist/d3.js"></script>
+</head>
+<body>
+    <h1>How do genders rank in terms of average rating, and how reliable is the comparison given differences in participation?</h1>
+
+    <div class="chart-container">
+        <svg id="bar-chart"></svg>
+    </div>
+
+    <script>
+        // Function to load gzipped TSV files
+        async function tsvgz(input, row) {
+            let blob = await d3.blob(`${input}.gz`);
+            const stream = blob.stream().pipeThrough(new DecompressionStream('gzip'));
+            return d3.tsvParse(await new Response(stream).text(), row);
+        }
+
+        // Load data
+        Promise.all([
+            tsvgz('../data/ratings.tsv', d => ({
+                id: +d['#id'],
+                rating: +d.rating,
+                games: +d.games
+            })),
+            d3.tsv('../data/players.tsv', d => ({
+                id: +d['#id'],
+                sex: d.sex
+            }))
+        ]).then(function([ratings, playersData]) {
+
+            // Create player lookup
+            const players = d3.index(playersData, p => p.id);
+
+            // Calculate statistics by gender
+            const menRatings = ratings.filter(d => players.get(d.id)?.sex === 'M');
+            const womenRatings = ratings.filter(d => players.get(d.id)?.sex === 'F');
+
+            const menAvgRating = d3.mean(menRatings, d => d.rating);
+            const womenAvgRating = d3.mean(womenRatings, d => d.rating);
+
+            const data = [
+                {
+                    gender: 'Men',
+                    avgRating: menAvgRating,
+                    count: menRatings.length,
+                    color: '#4a90e2'
+                },
+                {
+                    gender: 'Women',
+                    avgRating: womenAvgRating,
+                    count: womenRatings.length,
+                    color: '#e94b8a'
+                }
+            ];
+
+            // Chart dimensions
+            const margin = {top: 40, right: 40, bottom: 80, left: 80};
+            const width = 600 - margin.left - margin.right;
+            const height = 500 - margin.top - margin.bottom;
+
+            // Create SVG
+            const svg = d3.select('#bar-chart')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Scales
+            const x = d3.scaleBand()
+                .domain(data.map(d => d.gender))
+                .range([0, width])
+                .padding(0.3);
+
+            const barWidthScale = d3.scaleLinear()
+                .domain([d3.min(data, d => d.avgRating), d3.max(data, d => d.avgRating)])
+                .range([x.bandwidth() * 0.4, x.bandwidth()]);
+
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d.avgRating) * 1.1])
+                .range([height, 0]);
+
+            // Axes
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x))
+                .selectAll('text')
+                .style('font-size', '14px')
+                .style('font-weight', 'bold');
+
+            svg.append('g')
+                .call(d3.axisLeft(y));
+
+            // Y-axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', -margin.left + 20)
+                .attr('x', -height / 2)
+                .attr('fill', '#000')
+                .style('text-anchor', 'middle')
+                .style('font-size', '14px')
+                .style('font-weight', 'bold')
+                .text('Average Rating');
+
+            // Bars
+            svg.selectAll('.bar')
+                .data(data)
+                .enter()
+                .append('rect')
+                .attr('class', 'bar')
+                .attr('x', d => {
+                    const barWidth = barWidthScale(d.avgRating);
+                    return x(d.gender) + (x.bandwidth() - barWidth) / 2;
+                })
+                .attr('y', d => y(d.avgRating))
+                .attr('width', d => barWidthScale(d.avgRating))
+                .attr('height', d => height - y(d.avgRating))
+                .attr('fill', d => d.color)
+                .attr('rx', 4);
+
+            // Value labels on bars
+            svg.selectAll('.value-label')
+                .data(data)
+                .enter()
+                .append('text')
+                .attr('class', 'value-label')
+                .attr('x', d => x(d.gender) + x.bandwidth() / 2)
+                .attr('y', d => y(d.avgRating) + 20)
+                .attr('text-anchor', 'middle')
+                .text(d => d.avgRating.toFixed(1));
+
+        }).catch(function(error) {
+            console.error('Error loading data:', error);
+            document.body.innerHTML += '<div style="color: red; padding: 20px;">Error loading data: ' + error.message + '</div>';
+        });
+    </script>
+</body>
+</html>
