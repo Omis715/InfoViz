@@ -137,9 +137,9 @@
                     .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
                     .range([height, 0]);
 
-                // Size scale based on rating value
+                // Size scale based on total games
                 const sizeScale = d3.scaleSqrt()
-                    .domain(d3.extent(data, d => d.avgRating))
+                    .domain(d3.extent(data, d => d.totalGames))
                     .range([5, 25]);
 
                 // Color scale based on average games with logarithmic transformation
@@ -236,7 +236,7 @@
                     .attr('class', 'data-circle')
                     .attr('cx', d => x(d.year))
                     .attr('cy', d => y(d.avgRating))
-                    .attr('r', d => sizeScale(d.avgRating))
+                    .attr('r', d => sizeScale(d.totalGames))
                     .attr('fill', d => getColor(d.avgGames))
                     .attr('opacity', 0.8)
                     .attr('stroke', '#333')
@@ -435,7 +435,7 @@
                     .style('margin-left', '20px')
                     .style('color', '#666')
                     .style('font-style', 'italic')
-                    .text('Circle size = Rating value');
+                    .text('Circle size = Total games');
             }
             // Initial render
             console.log('Calling updateVisualization...');

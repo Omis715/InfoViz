@@ -70,9 +70,9 @@ header h1 {
 }
 
 main {
-    padding: 30px 50px;
-    max-width: 1400px;
-    margin: 0 auto;
+    padding: 0;
+    max-width: 100%;
+    margin: 0;
 }
 
 .slide {
@@ -82,6 +82,12 @@ main {
 
 .slide.active {
     display: block;
+}
+
+.slide iframe {
+    width: 100%;
+    height: calc(100vh - 150px);
+    border: none;
 }
 
 @keyframes fadeIn {

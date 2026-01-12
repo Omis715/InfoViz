@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Visualization</title>
+    <link rel="stylesheet" href="css/index.css">
+</head>
+<body>
+    <nav class="tabs">
+        <button class="tab-button active" data-slide="1">
+            <span class="tab-number">01</span>
+            <span class="tab-title">Rating Evolution Over Time</span>
+        </button>
+        <button class="tab-button" data-slide="2">
+            <span class="tab-number">02</span>
+            <span class="tab-title">Men vs Women Ratings</span>
+        </button>
+        <button class="tab-button" data-slide="3">
+            <span class="tab-number">03</span>
+            <span class="tab-title">Regional Ratings</span>
+        </button>
+    </nav>
+
+    <main>
+        <!-- Slide 1: Rating Evolution Over Time -->
+        <div class="slide active" id="slide-1">
+            <iframe src="viz/01-ratingOverTime.html" frameborder="0"></iframe>
+        </div>
+
+        <!-- Slide 2: Men vs Women -->
+        <div class="slide" id="slide-2">
+            <iframe src="viz/02-MenVsWomen.html" frameborder="0"></iframe>
+        </div>
+
+        <!-- Slide 3: Regional Ratings -->
+        <div class="slide" id="slide-3">
+            <iframe src="viz/03-RegionRatings.html" frameborder="0"></iframe>
+        </div>
+    </main>
+
+    <script>
+        // Tab switching functionality
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const slideNumber = button.dataset.slide;
+
+                // Update active tab
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+
+                // Update active slide
+                document.querySelectorAll('.slide').forEach(slide => slide.classList.remove('active'));
+                document.getElementById(`slide-${slideNumber}`).classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
