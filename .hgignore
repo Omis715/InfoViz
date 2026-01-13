@@ -3,3 +3,4 @@ data/txts/*
 data/0-download.py
 data/1-zip2txt.sh
 data/2-merge.py
+data/ratings.tsv
