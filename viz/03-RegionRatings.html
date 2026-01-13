@@ -120,7 +120,6 @@
                 .domain(ratingExtent)
                 .interpolator(d3.interpolateRdYlGn);
 
-            // Map positions for regions (approximate geographical locations)
             const regionPositions = {
                 'Europe': { x: 520, y: 200 },
                 'Asia': { x: 720, y: 250 },
@@ -154,7 +153,6 @@
                 .attr('class', 'region-circle')
                 .attr('transform', d => `translate(${d.x},${d.y})`);
 
-            // Create CIRCLES (not rectangles!)
             console.log('Creating circles with data:', data);
             const circleElements = circles.append('circle')
                 .attr('r', d => {

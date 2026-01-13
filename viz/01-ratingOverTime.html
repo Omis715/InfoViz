@@ -78,7 +78,7 @@
 
                         return { avgRating, avgGames, totalGames, playerCount, low, medium, high };
                     },
-                    d => d.month.split('-')[0] // Extract year from 'YYYY-MM'
+                    d => d.month.split('-')[0]
                 );
 
                 // Convert to array and sort by year
@@ -121,18 +121,17 @@
 
                 // Scales with padding
                 const xExtent = zoomedDomain || d3.extent(data, d => d.year);
-                const xPadding = (xExtent[1] - xExtent[0]) * 0.05; // 5% padding
+                const xPadding = (xExtent[1] - xExtent[0]) * 0.05;
                 const x = d3.scaleLinear()
                     .domain([xExtent[0] - xPadding, xExtent[1] + xPadding])
                     .range([0, width]);
 
-                // Filter data to zoomed range for y-axis calculation
                 const visibleData = zoomedDomain
                     ? data.filter(d => d.year >= zoomedDomain[0] && d.year <= zoomedDomain[1])
                     : data;
 
                 const yExtent = d3.extent(visibleData, d => d.avgRating);
-                const yPadding = (yExtent[1] - yExtent[0]) * 0.1; // 10% padding
+                const yPadding = (yExtent[1] - yExtent[0]) * 0.1;
                 const y = d3.scaleLinear()
                     .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
                     .range([height, 0]);
@@ -142,8 +141,7 @@
                     .domain(d3.extent(data, d => d.totalGames))
                     .range([5, 25]);
 
-                // Color scale based on average games with logarithmic transformation
-                // This makes differences more visible across a wide range of values
+                
                 const gamesExtent = d3.extent(data, d => d.avgGames);
                 const colorScale = d3.scaleSequential()
                     .domain([Math.log(gamesExtent[0] + 1), Math.log(gamesExtent[1] + 1)])
@@ -226,7 +224,6 @@
                         });
                 }
 
-                // Draw circles AFTER brush so they're on top
                 const tooltip = d3.select('#tooltip');
 
                 svg.selectAll('.data-circle')
@@ -311,12 +308,11 @@
                     .attr('stroke', '#999')
                     .attr('stroke-width', 1);
 
-                // Calculate bar width based on number of years
                 const barWidth = width / (data.length * 2);
 
                 // Bars
                 svg.selectAll('.delta-bar')
-                    .data(data.slice(1)) // Skip first (no delta)
+                    .data(data.slice(1))
                     .enter()
                     .append('rect')
                     .attr('class', 'delta-bar')
